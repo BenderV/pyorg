@@ -50,3 +50,15 @@ Small library to organize files by scripts.
 - del_empty_dirs(s_dir, del_hidden)
 
 - remove_files(paths)
+
+### IDEAS / TO ADD
+
+- delete file on all services: locally/cloud-service (dropbox, gdrive, gphotos, facebook).
+
+- create tree organization according to date of creation
+
+- add compress function (photos & videos)
+
+- add encrypt function
+
+- upload/archive function (dropbox, gdrive, ...)
