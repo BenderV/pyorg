@@ -10,6 +10,9 @@ import shutil
 from PIL import Image
 from PIL.ExifTags import TAGS
 import hashlib
+from wand.image import Image
+from wand.display import display
+from functools import wraps
 
 
 """
@@ -48,7 +51,10 @@ def make_sure_path_exists(path):
             raise
 
 def get_md5(file_path):
-    return hashlib.md5(open(file_path,'rb').read()).hexdigest()
+    try:
+        return hashlib.md5(open(file_path,'rb').read()).hexdigest()
+    except Exception as e:
+        print(file_path, e)
 
 """
 Don't work 100% of the time. To Fix
@@ -114,16 +120,20 @@ def list_duplicates(paths):
     duplicates = []
     duplicates_md5 = []
     files_size = defaultdict()
+
     for file_path in paths:
-        (mode, ino, dev, nlink, uid, gid, size, atime, mtime, ctime) = os.stat(file_path)
-        files_size.setdefault(size, []).append(file_path)
+        try:
+            (mode, ino, dev, nlink, uid, gid, size, atime, mtime, ctime) = os.stat(file_path)
+            files_size.setdefault(size, []).append(file_path)
+        except Exception: print(Exception)
     for file_size, files in files_size.items():
         if len(files) > 1:
             for k, g in itertools.groupby(files, get_md5):
-                duplicates.append(list(g))
-                duplicates_md5.append(k) # useless for now.
-    return duplicates 
-
+                  g = list(g)
+                  if len(g) > 1:
+                      duplicates.append(g)
+                      duplicates_md5.append(k) # useless for now.
+    return duplicates
 
 ### RENAME
 
@@ -132,7 +142,7 @@ def rename_format(file_path, format="%Y%m%d_%H%M%S"):
     basename = os.path.basename(file_path)
     filename, extension = os.path.splitext(basename)
 
-    (mode, ino, dev, nlink, uid, gid, size, atime, mtime, ctime) = os.stat(file_path)
+    (mode, ino, dev, nlink, uid, gid, size, atime, mtime, ctime) = os.stat(file_path) ## Warning, take the creating date of the file on the os.
     new_name = datetime.fromtimestamp(ctime).strftime(format) + extension
 
     new_path = os.path.join(path, new_name)
@@ -140,11 +150,41 @@ def rename_format(file_path, format="%Y%m%d_%H%M%S"):
     return new_path
 
 def rename_gdrive_format(file_path): # TO FIX
-    rename_format(file_path, "%Y%m%d_%H%M%S")
+    rename_format(file_path, "IMG_%Y%m%d_%H%M%S")
 
 
 def rename_dropbox_format(file_path):
     rename_format(file_path, "%Y-%m-%d %H.%M.%S")
+
+
+def change_name_format(files, dest=None):
+    p = re.compile(r'(\d{4})-(\d{2})-(\d{2}) (\d{2}).(\d{2}).(\d{2})')
+    # p = re.compile(r'(IMG_\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})') # For personal use
+
+    files_renamed = []
+
+    for file_path in files:
+        if dest:
+            path = dest
+        else:
+            path = os.path.dirname(file_path)
+
+
+        filename = os.path.basename(file_path)
+        match = re.match(p, filename)
+        if match:
+            year, month, day = match.group(1), match.group(2), match.group(3)
+            hour, minute, sec =  match.group(4), match.group(5), match.group(6)
+            extension = os.path.splitext(file_path)[1].lower()
+
+            # directory = year + '/' + month + '/ 
+            gfilename = 'IMG_' + year + month + day + "_" + hour + minute + sec + extension
+            new_path = os.path.join(path, year, month, gfilename)
+            if os.path.isfile(new_path):
+                new_path = new_path.replace(extension, '-1' + extension)
+            os.renames(file_path, new_path)
+            files_renamed.append(new_path)
+    return files_renamed
 
 
 ### ANALYSIS
@@ -231,3 +271,50 @@ def remove_files(paths):
     return deleted
 
 # TO ADD: choose which duplicates to keep.
+
+
+### Compress
+
+def bytes_saved(f):
+    """Only accept one file for now"""
+    size_saved = 0
+    @wraps(f)
+    def wrapper(*args):
+        size_saved += os.stat(image).st_size
+        new_path = f(*args)
+        size_saved -= os.stat(new_path).st_size
+        return new_path, size_saved
+    return wrapper
+
+@bytes_saved
+def compress_video(video_path, dest=None):
+    """Compress video to x264/AAC format"""
+    dest = dest if dest else os.path.dirname(video_path) 
+    basename = os.path.basename(video_path)
+    filename, extension = os.path.splitext(basename)
+    
+    new_name = filename + '.mp4'
+    new_path = os.path.join(dest, new_name)
+
+    cmd = ['ffmpeg', '-i', video_path, '-c:v', 'libx264', '-crf', '24', '-b:v', '1M', '-c:a', 'aac', '-strict', '-2', new_path]
+    p = subprocess.call(cmd, stdin=subprocess.PIPE)
+    return new_path
+
+@bytes_saved
+def compress_image(image_path, dest=None):
+    """Compress image with 90 quality"""
+    dest = dest if dest else os.path.dirname(image_path) 
+    basename = os.path.basename(image_path)
+    new_path = os.path.join(dest, basename)
+
+    with Image(filename=image_path) as img:
+        with img.clone() as i:
+            i.compression_quality = 90                
+            i.save(filename=new_path)
+    
+    return new_path
+
+
+
+
+
