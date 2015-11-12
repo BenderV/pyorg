@@ -51,13 +51,18 @@ Small library to organize files by scripts.
 
 - remove_files(paths)
 
+### Compress
+
+- compress_video(video_path, dest=None)
+
+- compress_image(image_path, dest=None)
+
+
 ### IDEAS / TO ADD
 
 - delete file on all services: locally/cloud-service (dropbox, gdrive, gphotos, facebook).
 
 - create tree organization according to date of creation
-
-- add compress function (photos & videos)
 
 - add encrypt function
 
